@@ -1,0 +1,66 @@
+def modular_adder(qc, a, target, ancillae, N):
+    p = len(target)
+    a_bin = bin(a)[2:].zfill(p)
+    N_bin = bin(N)[2:].zfill(p)
+
+    carry = ancillae[0]
+    for i in range(p-1, -1, -1):
+        if a_bin[i] == '1':
+            qc.x(target[i])
+        if i < p-1:
+            qc.ccx(target[i+1], carry, ancillae[1])
+            qc.cx(target[i+1], carry)
+            qc.ccx(target[i+1], ancillae[1], carry)
+
+    comparison_ancilla = ancillae[p-1]
+    for i in range(p):
+        if N_bin[i] == '0':
+            qc.x(target[i])
+
+    qc.mcx(target, comparison_ancilla)
+
+    for i in range(p):
+        if N_bin[i] == '0':
+            qc.x(target[i])
+
+    carry = ancillae[0]
+    qc.x(carry)
+
+    for i in range(p-1, -1, -1):
+        if N_bin[i] == '1':
+            qc.cx(comparison_ancilla, target[i])
+        if i > 0:
+            qc.ccx(target[i], carry, ancillae[1])
+            qc.cx(target[i], carry)
+            qc.ccx(target[i], ancillae[1], carry)
+
+    qc.x(carry)
+    qc.x(comparison_ancilla)
+
+def controlled_modular_multiplier(qc, control, a, target, ancillae, N):
+    p = len(target)
+    if a == 1:
+        return
+
+    a_bin = bin(a)[2:].zfill(p)
+    temp_reg = ancillae[:p]
+
+    for i in range(p):
+        qc.ccx(control, target[i], temp_reg[i])
+
+    for i in range(p):
+        if a_bin[p-i-1] == '1':
+            qc.mcx([control, temp_reg[i]], target[i])
+            with qc.if_test((control, True)):
+                modular_adder(qc, (1 << i) % N, target, ancillae[p:], N)
+
+    for i in range(p):
+        qc.ccx(control, target[i], temp_reg[i])
+
+def controlled_modular_exponentiation(qc, control_reg, a, target, ancillae, N):
+    b = len(control_reg)
+    for j in range(b):
+        a_power = pow(a, 2**j, N)
+        if a_power == 1:
+            continue
+        controlled_modular_multiplier(qc, control_reg[j], a_power, target, ancillae, N)
